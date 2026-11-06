@@ -12,9 +12,10 @@ Python 3.10+; standard library only. MIT licensed.
    then extract the ZIP (Windows: right-click → **Extract All**).
    Open the extracted folder containing `convert.py`.
 
-3. **Add your files.** Copy your measurement `.BIN` file and its INFO file into
-   that same folder. They are not included in the download. The commands below
-   use `A05FD3D6.BIN`; replace it with your measurement file's exact name.
+3. **Add your measurement file.** Copy your measurement `.BIN` file into that
+   same folder. It is not included in the download. The commands below use
+   `A05FD3D6.BIN`; replace it with your measurement file's exact name.
+   The separate INFO file is optional and only needed for comparing energy totals.
 
 4. **Open a command window in that folder.**
 
@@ -71,7 +72,8 @@ For example, select metadata and an output file explicitly:
 python3 convert.py A05FD3D6.BIN --info A05FD3D5.BIN -o result.csv
 ```
 
-INFO is optional and normally detected by the immediately preceding filename.
+The INFO file is another `.BIN` file containing device metadata, including the
+stored energy counter. It is optional and normally detected by the immediately preceding filename.
 Use metadata from the same export. Passing an INFO file as the input instead
 exports one metadata row, without measurements.
 
