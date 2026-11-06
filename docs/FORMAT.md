@@ -40,6 +40,16 @@ produce warnings. Non-padding bytes after an end marker are warned about and
 ignored. Insertions/deletions can destroy five-byte alignment; the next timestamp
 marker restores alignment, but intermediate data may be unusable.
 
+### User-supplied timeline
+
+`--start-time "YYYY-MM-DD HH:MM[:SS]"` assigns the first exported slot that local
+time and advances one minute per complete slot, including invalid slots. It
+overrides every device timestamp, labels every row `user_start`, and warns about
+the continuous-recording assumption. It needs no device marker and cannot be
+combined with backfilling. Skipped fragments add no slots, and recording gaps or
+clock changes are not recovered. This is a user-supplied analysis timeline, not
+evidence of actual acquisition times. Decoded values and energy sums are unchanged.
+
 ## INFO file
 
 Expected size is 102 bytes. Detection uses `INFO:`, not file size or name alone.

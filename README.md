@@ -19,21 +19,47 @@ mkdir -p data
 
 Copy your measurement BIN files and associated INFO file into `data/`. Sample
 files are not included. Replace the example filenames below with your own.
+Each example is a separate command; run only the one you need.
+
+**Basic conversion:**
 
 ```sh
 python3 convert.py data/A05FD3D6.BIN
-python3 convert.py data/A05FD3D6.BIN -o measurements.csv
-python3 convert.py data/A05FD3D6.BIN --info data/A05FD3D5.BIN
-python3 convert.py data/A05FD3D5.BIN -o info.csv
-python3 convert.py --help
 ```
 
-The default output replaces the input suffix with `.csv`. Existing files are
-never overwritten. INFO input produces a separate metadata CSV. For measurement
-input, the converter checks the immediately preceding filename for an `INFO:`
-signature. Use `--info FILE` to select another INFO file, or `--no-info` to disable
-discovery. Check that manually selected metadata belongs to the same export;
-matching device IDs alone cannot establish this.
+`python3` runs Python, `convert.py` is the converter, and `data/A05FD3D6.BIN`
+is the measurement file to read. This creates `data/A05FD3D6.csv`.
+Existing files are never overwritten; choose a new output name for another run.
+
+| Option | What it does |
+| --- | --- |
+| `-o data/result.csv` | Choose the output path instead of the default `.csv` path. |
+| `--info data/A05FD3D5.BIN` | Select the associated metadata file for comparing its stored energy counter with the interval estimate. It does not supply or correct measurement timestamps. |
+| `--no-info` | Disable automatic metadata discovery and the INFO energy comparison. |
+| `--help` | Show all options, including the timestamp options described below. |
+
+**Choose metadata and output explicitly:**
+
+```sh
+python3 convert.py data/A05FD3D6.BIN --info data/A05FD3D5.BIN -o data/result.csv
+```
+
+Normally `--info` is optional: the converter checks the immediately preceding
+filename for an `INFO:` signature. Measurement conversion also works without INFO.
+Check that selected metadata belongs to the same export; matching device IDs alone
+cannot establish this. Option names are case sensitive: use `--info`, not `--Info`.
+
+**Export only the INFO metadata** (one summary row, no measurements):
+
+```sh
+python3 convert.py data/A05FD3D5.BIN -o data/info.csv
+```
+
+**Show command-line help:**
+
+```sh
+python3 convert.py --help
+```
 
 Diagnostics and an energy comparison go to stderr. Exit status is 0 for a usable
 conversion (possibly with warnings), 1 for file/format errors, and 2 for CLI errors.
@@ -46,8 +72,8 @@ as the column separator and a period as the decimal separator.
 | Column | Meaning |
 | --- | --- |
 | `record_index`, `byte_offset` | Zero-based slot index and source byte position |
-| `timestamp` | Local device clock in ISO 8601; blank when unknown; no timezone |
-| `timestamp_source` | `marker`, `interval`, `backfilled`, or `missing` |
+| `timestamp` | Local device or user-supplied time in ISO 8601; blank when unknown; no timezone |
+| `timestamp_source` | `marker`, `interval`, `backfilled`, `user_start`, or `missing` |
 | `voltage_V`, `current_A` | Stored voltage (V) and current (A) |
 | `power_factor` | Stored dimensionless factor, 0–1 |
 | `active_power_estimate_W` | Reconstructed voltage × current × power factor (W) |
@@ -59,20 +85,42 @@ fragments are warned about. Measurement values are never interpolated or replace
 INFO CSV contains energy (kWh), device ID, initial-setting clock and **raw** time
 counters whose units remain unverified.
 
-## Timestamps and limitations
+## Timestamps
 
-Timestamp markers anchor the following record. Subsequent slots advance by the
-format's nominal one-minute cadence. Missing leading timestamps remain blank.
-`--backfill-timestamps` explicitly assumes continuous recording before the first
-marker and labels those inferred timestamps `backfilled`. The INFO initial-setting
-clock is not used as a measurement start. Clock changes, gaps and truncated files
-can prevent recovery of actual elapsed time.
+Only timestamps are assigned; missing measurement values or rows are never created.
+The INFO initial-setting clock is not used as a measurement start.
 
-To explicitly enable backfilling:
+**Default:** A device timestamp marker dates the following row (`marker`). Later
+slots advance by one minute (`interval`) until another marker resets the clock.
+Rows before the first valid marker stay blank (`missing`).
+
+**Backfill missing leading times:**
 
 ```sh
 python3 convert.py data/A05FD3D6.BIN --backfill-timestamps -o data/with_timestamps.csv
 ```
+
+This counts backward from the first valid marker at one minute per preceding row.
+For example, three rows before a 10:03 marker become 10:00, 10:01 and 10:02.
+These rows are labeled `backfilled`. This assumes continuous recording, needs a
+valid marker and leaves damaged prefixes unfilled. Later device times are retained.
+
+**Set a known start date and time:**
+
+```sh
+python3 convert.py data/A05FD3D6.BIN --start-time "2025-01-15 08:30" -o data/custom_times.csv
+```
+
+Replace the quoted example with the actual start of your first measurement row.
+Use `YYYY-MM-DD HH:MM` or `YYYY-MM-DD HH:MM:SS`, without a timezone. Row 0 gets
+that time, row 1 gets one minute later, and so on, including invalid complete slots.
+All rows are labeled `user_start`. This **replaces all device timestamps**, including
+later markers, and also works without any markers. It assumes no recording gaps;
+it cannot recover pauses, missing intervals or daylight-saving changes. Use it only
+when that assumption fits your recording. It cannot be combined with
+`--backfill-timestamps`. Measurement values and energy estimates stay unchanged.
+
+## Known limitations
 
 Only the layout verified against the supplied Energy Logger 4000 pair is supported;
 no claim is made for other models, firmware versions or device variants. Headerless
