@@ -3,12 +3,65 @@
 Convert Voltcraft Energy Logger 4000 binary exports to CSV without Voltsoft.
 Python 3.10+; standard library only. MIT licensed.
 
-## Installation
+## Quick start — no Python experience needed
+
+1. **Install Python.** Download it for your computer from
+   [python.org](https://www.python.org/downloads/) and follow the installer.
+
+2. **Download this tool.** Click **Code → Download ZIP** on this GitHub page,
+   then extract the ZIP (Windows: right-click → **Extract All**).
+   Open the extracted folder containing `convert.py`.
+
+3. **Add your files.** Copy your measurement `.BIN` file and its INFO file into
+   that same folder. They are not included in the download. The commands below
+   use `A05FD3D6.BIN`; replace it with your measurement file's exact name.
+
+4. **Open a command window in that folder.**
+
+   **Windows:** In File Explorer, click the folder's address bar, type `cmd`,
+   and press **Enter**.
+
+   **macOS:** Press **⌘ Space**, type `Terminal`, and press **Enter**.
+   Type `cd ` (including the space), drag the extracted folder from Finder into
+   the Terminal window, then press **Enter**.
+
+5. **Convert your file.** Copy the command for your computer into that window,
+   replace the filename if needed, and press **Enter**.
+
+   Windows:
+
+   ```sh
+   py convert.py A05FD3D6.BIN
+   ```
+
+   macOS:
+
+   ```sh
+   python3 convert.py A05FD3D6.BIN
+   ```
+
+   To set a known start time, add `--start-time "2025-01-15 08:30"` to the end
+   of your command, replacing the example date and time. This replaces device
+   times and assumes one uninterrupted minute per row. Otherwise, unknown times
+   stay blank. Measurement values are never filled in.
+
+6. **Open the result.** Find `A05FD3D6.csv` next to your BIN file and open it in
+   Excel or LibreOffice. If all values appear in one column, import it as CSV
+   with a comma separator and a period decimal separator. For another conversion,
+   move or rename the existing CSV first; the tool never overwrites files.
+
+More options and explanations follow below.
+
+## Advanced usage
+
+Examples below use `python3`; on Windows, use `py` instead.
+
+### Installation
 
 Clone or download this repository. No packages or installation step are needed.
 Check your Python version with `python3 --version`.
 
-## Usage
+### Usage
 
 Open a terminal in the downloaded repository folder, or navigate there:
 
@@ -67,7 +120,7 @@ conversion (possibly with warnings), 1 for file/format errors, and 2 for CLI err
 Open the resulting CSV in Excel or LibreOffice. If importing it, select a comma
 as the column separator and a period as the decimal separator.
 
-## CSV fields
+### CSV fields
 
 | Column | Meaning |
 | --- | --- |
@@ -85,7 +138,7 @@ fragments are warned about. Measurement values are never interpolated or replace
 INFO CSV contains energy (kWh), device ID, initial-setting clock and **raw** time
 counters whose units remain unverified.
 
-## Timestamps
+### Timestamps
 
 Only timestamps are assigned; missing measurement values or rows are never created.
 The INFO initial-setting clock is not used as a measurement start.
@@ -120,7 +173,7 @@ it cannot recover pauses, missing intervals or daylight-saving changes. Use it o
 when that assumption fits your recording. It cannot be combined with
 `--backfill-timestamps`. Measurement values and energy estimates stay unchanged.
 
-## Known limitations
+### Known limitations
 
 Only the layout verified against the supplied Energy Logger 4000 pair is supported;
 no claim is made for other models, firmware versions or device variants. Headerless
@@ -133,7 +186,7 @@ coverage**, **604.16048 W peak**, **0.476 kWh INFO energy**, and **0.447470320 k
 interval energy**. The 6% discrepancy is unresolved; see
 [binary format and validation notes](docs/FORMAT.md).
 
-## Tests and private data
+### Tests and private data
 
 ```sh
 python3 -m unittest discover -v
