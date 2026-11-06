@@ -40,7 +40,7 @@ Python 3.10+; standard library only. MIT licensed.
    python3 convert.py A05FD3D6.BIN
    ```
 
-   To set a known start time, add `--start-time "2025-01-15 08:30"` to the end
+   To set a known start time, add `--start-time "2026-10-15 08:30"` to the end
    of your command, replacing the example date and time. This replaces device
    times and assumes one uninterrupted minute per row. Otherwise, unknown times
    stay blank. Measurement values are never filled in.
