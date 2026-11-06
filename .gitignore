@@ -2,7 +2,6 @@
 *.[bB][iI][nN]
 data/
 *.csv
-*.json
 
 # Python and editor/OS files
 __pycache__/
