@@ -1,2 +1,79 @@
 # energy-logger-4000-converter
-Python tool to convert Voltcraft Energy Logger 4000 binary measurement files (.BIN) into CSV for analysis in Excel or Python.
+
+Convert Voltcraft Energy Logger 4000 binary exports to CSV without Voltsoft.
+Python 3.10+; standard library only. MIT licensed.
+
+## Installation
+
+Clone or download this repository. No packages or installation step are needed.
+Check your Python version with `python3 --version`.
+
+## Usage
+
+```sh
+python3 convert.py data/A05FD3D6.BIN
+python3 convert.py data/A05FD3D6.BIN -o measurements.csv
+python3 convert.py data/A05FD3D6.BIN --info data/A05FD3D5.BIN
+python3 convert.py data/A05FD3D5.BIN -o info.csv
+python3 convert.py --help
+```
+
+The default output replaces the input suffix with `.csv`. Existing files are
+never overwritten. INFO input produces a separate metadata CSV. For measurement
+input, the converter checks the immediately preceding filename for an `INFO:`
+signature. Use `--info FILE` to select another INFO file, or `--no-info` to disable
+discovery. Check that manually selected metadata belongs to the same export;
+matching device IDs alone cannot establish this.
+
+Diagnostics and an energy comparison go to stderr. Exit status is 0 for a usable
+conversion (possibly with warnings), 1 for file/format errors, and 2 for CLI errors.
+
+## CSV fields
+
+| Column | Meaning |
+| --- | --- |
+| `record_index`, `byte_offset` | Zero-based slot index and source byte position |
+| `timestamp` | Local device clock in ISO 8601; blank when unknown; no timezone |
+| `timestamp_source` | `marker`, `interval`, `backfilled`, or `missing` |
+| `voltage_V`, `current_A` | Stored voltage (V) and current (A) |
+| `power_factor` | Stored dimensionless factor, 0–1 |
+| `active_power_estimate_W` | Reconstructed voltage × current × power factor (W) |
+| `apparent_power_VA` | Voltage × current (VA) |
+| `status`, `raw_hex` | `ok` or `invalid`, and original slot bytes for audit |
+
+Invalid slots retain their position but have blank measurement fields. Incomplete
+fragments are warned about. Measurement values are never interpolated or replaced.
+INFO CSV contains energy (kWh), device ID, initial-setting clock and **raw** time
+counters whose units remain unverified.
+
+## Timestamps and limitations
+
+Timestamp markers anchor the following record. Subsequent slots advance by the
+format's nominal one-minute cadence. Missing leading timestamps remain blank.
+`--backfill-timestamps` explicitly assumes continuous recording before the first
+marker and labels those inferred timestamps `backfilled`. The INFO initial-setting
+clock is not used as a measurement start. Clock changes, gaps and truncated files
+can prevent recovery of actual elapsed time.
+
+Only the layout verified against the supplied Energy Logger 4000 pair is supported;
+no claim is made for other models, firmware versions or device variants. Headerless
+data detection is heuristic. Arbitrary byte corruption cannot always be identified
+or repaired. Active power and interval energy are estimates from stored fields,
+not the device's independent energy counter.
+
+The private reference pair yields **1,458 records**, **24 h 18 min nominal interval
+coverage**, **604.16048 W peak**, **0.476 kWh INFO energy**, and **0.447470320 kWh
+interval energy**. The 6% discrepancy is unresolved; see
+[binary format and validation notes](docs/FORMAT.md).
+
+## Tests and private data
+
+```sh
+python3 -m unittest discover -v
+# Optional regression check, only when the two private sample files are available:
+ENERGY_LOGGER_PRIVATE_DATA=data python3 -m unittest discover -v
+```
+
+Public tests generate synthetic bytes. Private BIN files are not distributed.
+All case variants of `.bin`, the `data/` directory and generated CSV files are
+ignored by Git. Keep personal measurements there and do not force-add them.
