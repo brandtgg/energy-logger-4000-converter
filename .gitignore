@@ -1,0 +1,13 @@
+# Private device exports and derived measurements must stay local.
+*.[bB][iI][nN]
+data/
+*.csv
+*.json
+
+# Python and editor/OS files
+__pycache__/
+*.py[cod]
+.venv/
+.coverage
+.pytest_cache/
+.DS_Store
