@@ -54,149 +54,77 @@ More options and explanations follow below.
 
 ## Advanced usage
 
-Examples below use `python3`; on Windows, use `py` instead.
+Use `python3` on macOS/Linux or `py` on Windows. No extra packages are required.
 
-### Installation
-
-Clone or download this repository. No packages or installation step are needed.
-Check your Python version with `python3 --version`.
-
-### Usage
-
-Open a terminal in the downloaded repository folder, or navigate there:
-
-```sh
-cd /path/to/energy-logger-4000-converter
-mkdir -p data
-```
-
-Copy your measurement BIN files and associated INFO file into `data/`. Sample
-files are not included. Replace the example filenames below with your own.
-Each example is a separate command; run only the one you need.
-
-**Basic conversion:**
-
-```sh
-python3 convert.py data/A05FD3D6.BIN
-```
-
-`python3` runs Python, `convert.py` is the converter, and `data/A05FD3D6.BIN`
-is the measurement file to read. This creates `data/A05FD3D6.csv`.
-Existing files are never overwritten; choose a new output name for another run.
-
-| Option | What it does |
+| Option | Purpose |
 | --- | --- |
-| `-o data/result.csv` | Choose the output path instead of the default `.csv` path. |
-| `--info data/A05FD3D5.BIN` | Select the associated metadata file for comparing its stored energy counter with the interval estimate. It does not supply or correct measurement timestamps. |
-| `--no-info` | Disable automatic metadata discovery and the INFO energy comparison. |
-| `--help` | Show all options, including the timestamp options described below. |
+| `-o result.csv` | Choose a new output filename; existing files are never overwritten. |
+| `--info FILE` | Read associated metadata for the energy comparison; does not set timestamps. |
+| `--no-info` | Skip automatic metadata discovery. |
+| `--backfill-timestamps` | Infer leading times backward from the first valid device marker, one minute per row. |
+| `--start-time "YYYY-MM-DD HH:MM"` | Set the first row's time and replace all device times with a continuous one-minute timeline. |
+| `--help` | Show all command-line options. |
 
-**Choose metadata and output explicitly:**
-
-```sh
-python3 convert.py data/A05FD3D6.BIN --info data/A05FD3D5.BIN -o data/result.csv
-```
-
-Normally `--info` is optional: the converter checks the immediately preceding
-filename for an `INFO:` signature. Measurement conversion also works without INFO.
-Check that selected metadata belongs to the same export; matching device IDs alone
-cannot establish this. Option names are case sensitive: use `--info`, not `--Info`.
-
-**Export only the INFO metadata** (one summary row, no measurements):
+For example, select metadata and an output file explicitly:
 
 ```sh
-python3 convert.py data/A05FD3D5.BIN -o data/info.csv
+python3 convert.py A05FD3D6.BIN --info A05FD3D5.BIN -o result.csv
 ```
 
-**Show command-line help:**
-
-```sh
-python3 convert.py --help
-```
-
-Diagnostics and an energy comparison go to stderr. Exit status is 0 for a usable
-conversion (possibly with warnings), 1 for file/format errors, and 2 for CLI errors.
-
-Open the resulting CSV in Excel or LibreOffice. If importing it, select a comma
-as the column separator and a period as the decimal separator.
-
-### CSV fields
-
-| Column | Meaning |
-| --- | --- |
-| `record_index`, `byte_offset` | Zero-based slot index and source byte position |
-| `timestamp` | Local device or user-supplied time in ISO 8601; blank when unknown; no timezone |
-| `timestamp_source` | `marker`, `interval`, `backfilled`, `user_start`, or `missing` |
-| `voltage_V`, `current_A` | Stored voltage (V) and current (A) |
-| `power_factor` | Stored dimensionless factor, 0–1 |
-| `active_power_estimate_W` | Reconstructed voltage × current × power factor (W) |
-| `apparent_power_VA` | Voltage × current (VA) |
-| `status`, `raw_hex` | `ok` or `invalid`, and original slot bytes for audit |
-
-Invalid slots retain their position but have blank measurement fields. Incomplete
-fragments are warned about. Measurement values are never interpolated or replaced.
-INFO CSV contains energy (kWh), device ID, initial-setting clock and **raw** time
-counters whose units remain unverified.
+INFO is optional and normally detected by the immediately preceding filename.
+Use metadata from the same export. Passing an INFO file as the input instead
+exports one metadata row, without measurements.
 
 ### Timestamps
 
-Only timestamps are assigned; missing measurement values or rows are never created.
-The INFO initial-setting clock is not used as a measurement start.
+By default, device markers date the following row; subsequent rows advance by
+one minute until another marker. Unknown leading times stay blank.
 
-**Default:** A device timestamp marker dates the following row (`marker`). Later
-slots advance by one minute (`interval`) until another marker resets the clock.
-Rows before the first valid marker stay blank (`missing`).
-
-**Backfill missing leading times:**
-
-```sh
-python3 convert.py data/A05FD3D6.BIN --backfill-timestamps -o data/with_timestamps.csv
-```
-
-This counts backward from the first valid marker at one minute per preceding row.
-For example, three rows before a 10:03 marker become 10:00, 10:01 and 10:02.
-These rows are labeled `backfilled`. This assumes continuous recording, needs a
-valid marker and leaves damaged prefixes unfilled. Later device times are retained.
-
-**Set a known start date and time:**
+- `--backfill-timestamps` needs a valid marker and an undamaged prefix. Three rows
+  before a 10:03 marker become 10:00, 10:01 and 10:02; later device times remain.
+- `--start-time` works without markers and overrides all device times. Include the
+  date, keep the quotes, and optionally add seconds (`YYYY-MM-DD HH:MM:SS`).
 
 ```sh
-python3 convert.py data/A05FD3D6.BIN --start-time "2025-01-15 08:30" -o data/custom_times.csv
+python3 convert.py A05FD3D6.BIN --start-time "2025-01-15 08:30" -o custom_times.csv
 ```
 
-Replace the quoted example with the actual start of your first measurement row.
-Use `YYYY-MM-DD HH:MM` or `YYYY-MM-DD HH:MM:SS`, without a timezone. Row 0 gets
-that time, row 1 gets one minute later, and so on, including invalid complete slots.
-All rows are labeled `user_start`. This **replaces all device timestamps**, including
-later markers, and also works without any markers. It assumes no recording gaps;
-it cannot recover pauses, missing intervals or daylight-saving changes. Use it only
-when that assumption fits your recording. It cannot be combined with
-`--backfill-timestamps`. Measurement values and energy estimates stay unchanged.
+Both options assume continuous one-minute slots, including invalid complete slots;
+recording gaps cannot be recovered. They cannot be combined. No missing measurement
+values or rows are created. The INFO initial-setting clock is not a recording start.
 
-### Known limitations
+### CSV output
 
-Only the layout verified against the supplied Energy Logger 4000 pair is supported;
-no claim is made for other models, firmware versions or device variants. Headerless
-data detection is heuristic. Arbitrary byte corruption cannot always be identified
-or repaired. Active power and interval energy are estimates from stored fields,
-not the device's independent energy counter.
+| Fields | Meaning |
+| --- | --- |
+| `timestamp`, `timestamp_source` | Local time without a timezone; origin: `marker`, `interval`, `backfilled`, `user_start`, or `missing`. |
+| `voltage_V`, `current_A`, `power_factor` | Decoded voltage (V), current (A), and dimensionless power factor. |
+| `active_power_estimate_W`, `apparent_power_VA` | Reconstructed U × I × PF (W) and U × I (VA). |
+| `record_index`, `byte_offset`, `status`, `raw_hex` | Source position, validity and original slot bytes for checking results. |
 
-The private reference pair yields **1,458 records**, **24 h 18 min nominal interval
-coverage**, **604.16048 W peak**, **0.476 kWh INFO energy**, and **0.447470320 kWh
-interval energy**. The 6% discrepancy is unresolved; see
-[binary format and validation notes](docs/FORMAT.md).
+Invalid slots have blank measurement fields; damaged or incomplete input produces
+warnings. INFO output contains energy (kWh), device ID, initial-setting time and
+unverified raw time counters. Diagnostics go to stderr; exit codes are 0 for a
+usable conversion (possibly with warnings), 1 for file/format errors, and 2 for CLI errors.
+
+### Limitations and validation
+
+Only the supplied Energy Logger 4000 layout has been tested. Headerless detection
+is heuristic, and some corruption may go undetected. Power and interval energy are
+estimates. The private reference pair yields 1,458 records (24 h 18 min nominal
+coverage), 604.16048 W peak and 0.447470320 kWh versus 0.476 kWh in INFO. The roughly
+6% energy difference remains unresolved. See [format and validation notes](docs/FORMAT.md).
 
 ### Tests and private data
 
 ```sh
 python3 -m unittest discover -v
-# Optional regression check, only when the two private sample files are available:
+# Optional: check the private reference pair stored in data/
 ENERGY_LOGGER_PRIVATE_DATA=data python3 -m unittest discover -v
 ```
 
-Public tests generate synthetic bytes. Private BIN files are not distributed.
-All case variants of `.bin`, the `data/` directory and generated CSV files are
-ignored by Git. Keep personal measurements there and do not force-add them.
+Public tests use synthetic data. BIN files, generated CSVs and `data/` are ignored
+by Git. Private measurement files are not included; do not force-add them.
 
 ## Disclaimer
 
