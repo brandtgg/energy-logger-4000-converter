@@ -10,6 +10,16 @@ Check your Python version with `python3 --version`.
 
 ## Usage
 
+Open a terminal in the downloaded repository folder, or navigate there:
+
+```sh
+cd /path/to/energy-logger-4000-converter
+mkdir -p data
+```
+
+Copy your measurement BIN files and associated INFO file into `data/`. Sample
+files are not included. Replace the example filenames below with your own.
+
 ```sh
 python3 convert.py data/A05FD3D6.BIN
 python3 convert.py data/A05FD3D6.BIN -o measurements.csv
@@ -27,6 +37,9 @@ matching device IDs alone cannot establish this.
 
 Diagnostics and an energy comparison go to stderr. Exit status is 0 for a usable
 conversion (possibly with warnings), 1 for file/format errors, and 2 for CLI errors.
+
+Open the resulting CSV in Excel or LibreOffice. If importing it, select a comma
+as the column separator and a period as the decimal separator.
 
 ## CSV fields
 
@@ -54,6 +67,12 @@ format's nominal one-minute cadence. Missing leading timestamps remain blank.
 marker and labels those inferred timestamps `backfilled`. The INFO initial-setting
 clock is not used as a measurement start. Clock changes, gaps and truncated files
 can prevent recovery of actual elapsed time.
+
+To explicitly enable backfilling:
+
+```sh
+python3 convert.py data/A05FD3D6.BIN --backfill-timestamps -o data/with_timestamps.csv
+```
 
 Only the layout verified against the supplied Energy Logger 4000 pair is supported;
 no claim is made for other models, firmware versions or device variants. Headerless
