@@ -2,7 +2,7 @@
 
 import contextlib
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import io
 import os
 from pathlib import Path
@@ -79,6 +79,36 @@ class DecoderTests(unittest.TestCase):
         result = convert.parse_measurements(sample() * 2 + END, backfill_timestamps=True)
         self.assertTrue(all(r.timestamp is None for r in result.records))
         self.assertTrue(any("heuristically" in w for w in result.warnings))
+
+    def test_start_time_replaces_device_clock_and_preserves_measurements(self):
+        data = sample() + marker() + sample() + marker(hour=15) + sample() + END
+        original = convert.parse_measurements(data)
+        start = datetime(2026, 2, 28, 23, 59, 30)
+        result = convert.parse_measurements(data, start_time=start)
+        self.assertEqual([r.timestamp for r in result.records],
+                         [start + index * timedelta(minutes=1) for index in range(3)])
+        self.assertTrue(all(r.timestamp_source == "user_start" for r in result.records))
+        self.assertEqual([r.raw for r in result.records], [r.raw for r in original.records])
+        self.assertEqual([r.active_power for r in result.records], [r.active_power for r in original.records])
+        self.assertEqual(result.energy_estimate_kwh, original.energy_estimate_kwh)
+        self.assertTrue(any("replaces all device timestamps" in w for w in result.warnings))
+        self.assertFalse(any("left blank" in w or "using new marker" in w for w in result.warnings))
+
+    def test_start_time_without_markers_counts_invalid_slots(self):
+        data = sample() + sample(pf=101) + sample() + END
+        start = datetime(2025, 1, 1)
+        result = convert.parse_measurements(data, start_time=start)
+        self.assertFalse(result.records[1].valid)
+        self.assertIsNone(result.records[1].active_power)
+        self.assertEqual(result.records[2].timestamp, start + timedelta(minutes=2))
+
+    def test_start_time_rejects_ambiguous_settings_and_overflow(self):
+        for kwargs in ({"start_time": datetime(2025, 1, 1), "backfill_timestamps": True},
+                       {"start_time": datetime(2025, 1, 1, tzinfo=timezone.utc)},
+                       {"start_time": datetime(9999, 12, 31, 23, 59)}):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(convert.FormatError):
+                    convert.parse_measurements(sample() * 2 + END, **kwargs)
 
     def test_invalid_slot_is_blank_and_preserves_minute(self):
         data = marker() + sample() + sample(pf=101) + sample() + END
@@ -210,6 +240,34 @@ class CliTests(unittest.TestCase):
         status, _, err = self.run_cli(self.input)
         self.assertEqual(status, 0, err)
         self.assertEqual(self.read_csv("A0000021.csv")[0]["total_energy_kWh"], "0.321")
+
+    def test_start_time_cli_writes_user_timeline(self):
+        status, _, err = self.run_cli(self.input, "--start-time", "2025-04-05 08:30:15")
+        self.assertEqual(status, 0, err)
+        rows = self.read_csv("A0000021.csv")
+        self.assertEqual(rows[0]["timestamp"], "2025-04-05T08:30:15")
+        self.assertEqual(rows[-1]["timestamp"], "2025-04-05T08:32:15")
+        self.assertTrue(all(row["timestamp_source"] == "user_start" for row in rows))
+
+    def test_start_time_cli_rejects_invalid_dates_and_conflicting_options(self):
+        cases = [["--start-time", value] for value in
+                 ("08:30", "2025-01-01", "2025-02-30 08:30", "2025-01-01 24:00",
+                  "2025-01-01T08:30Z", "2025-01-01T08:30+01:00")]
+        cases.append(["--start-time", "2025-01-01 08:30", "--backfill-timestamps"])
+        for args in cases:
+            with self.subTest(args=args):
+                with self.assertRaises(SystemExit) as caught:
+                    self.run_cli(self.input, *args)
+                self.assertEqual(caught.exception.code, 2)
+                self.assertFalse((self.root / "A0000021.csv").exists())
+        self.assertEqual(convert._parse_start_time("2025-01-01T08:30"), datetime(2025, 1, 1, 8, 30))
+
+    def test_start_time_rejects_info_input(self):
+        self.input.write_bytes(metadata())
+        status, _, err = self.run_cli(self.input, "--start-time", "2025-01-01 08:30")
+        self.assertEqual(status, 1)
+        self.assertIn("require measurement input", err)
+        self.assertFalse((self.root / "A0000021.csv").exists())
 
     def test_no_info_and_unrelated_info_not_used(self):
         (self.root / "other.BIN").write_bytes(metadata())

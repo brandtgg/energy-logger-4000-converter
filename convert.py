@@ -103,8 +103,14 @@ def _decode_record(raw: bytes, offset: int) -> Record:
     return Record(offset, raw, voltage, current, pf)
 
 
-def parse_measurements(data: bytes, *, backfill_timestamps: bool = False) -> Measurements:
+def parse_measurements(data: bytes, *, backfill_timestamps: bool = False,
+                       start_time: datetime | None = None) -> Measurements:
     """Read fixed-size slots; timestamp markers anchor the following slot."""
+    if start_time is not None:
+        if backfill_timestamps:
+            raise FormatError("start_time and backfill_timestamps cannot be combined")
+        if start_time.tzinfo is not None:
+            raise FormatError("start_time must be a local date/time without a timezone")
     if data.startswith((b"INFO:", b"\xb8\xad\xf2")):
         raise FormatError("expected measurements, received INFO or setup data")
     records: list[Record] = []
@@ -134,7 +140,8 @@ def parse_measurements(data: bytes, *, backfill_timestamps: bool = False) -> Mea
                 backfill_safe = False
             else:
                 if clock is not None and new_clock != clock:
-                    warnings.append(f"timestamp discontinuity at offset {offset}; using new marker")
+                    action = "device times overridden by --start-time" if start_time else "using new marker"
+                    warnings.append(f"timestamp discontinuity at offset {offset}; {action}")
                 if backfill_timestamps and not found_marker and records:
                     if backfill_safe and all(r.valid for r in records):
                         for index, record in enumerate(records):
@@ -185,6 +192,14 @@ def parse_measurements(data: bytes, *, backfill_timestamps: bool = False) -> Mea
         warnings.append("no valid timestamp marker; format identified heuristically")
     if not ended:
         warnings.append("measurement end marker missing; file may be incomplete")
+    if start_time is not None:
+        try:
+            for index, record in enumerate(records):
+                record.timestamp = start_time + index * MINUTE
+                record.timestamp_source = "user_start"
+        except OverflowError as exc:
+            raise FormatError("start time plus recording duration exceeds supported date range") from exc
+        warnings.append("--start-time replaces all device timestamps with continuous one-minute slots; gaps are not recovered")
     missing = sum(r.timestamp is None for r in records)
     if missing:
         warnings.append(f"{missing} records have no timestamp; CSV timestamps left blank")
@@ -232,29 +247,43 @@ def write_info(path: Path, info: Info) -> None:
                          info.recorded_time_raw, info.on_time_raw])
 
 
+def _parse_start_time(value: str) -> datetime:
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?", value):
+        raise argparse.ArgumentTypeError('use "YYYY-MM-DD HH:MM[:SS]" without a timezone')
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid start date/time: {value}") from exc
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path, help="measurement or INFO BIN file")
     parser.add_argument("-o", "--output", type=Path, help="new CSV file (default: input with .csv suffix)")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--info", type=Path, help="associated INFO file; default: immediate predecessor filename")
+    group.add_argument("--info", type=Path,
+                       help="read associated metadata for the energy comparison; does not set timestamps (default: preceding filename)")
     group.add_argument("--no-info", action="store_true", help="disable automatic INFO discovery")
-    parser.add_argument("--backfill-timestamps", action="store_true",
-                        help="infer leading timestamps from first marker assuming continuous minutes; labels inferred rows")
+    timing = parser.add_mutually_exclusive_group()
+    timing.add_argument("--backfill-timestamps", action="store_true",
+                        help="infer missing leading timestamps backward from first valid device marker at one-minute intervals")
+    timing.add_argument("--start-time", type=_parse_start_time, metavar='"YYYY-MM-DD HH:MM[:SS]"',
+                        help="set first row time and advance one minute per slot; overrides all device timestamps, assumes no gaps")
     args = parser.parse_args(argv)
     try:
         data = args.input.read_bytes()
         output = args.output or args.input.with_suffix(".csv")
         if data.startswith(b"INFO:"):
-            if args.info or args.backfill_timestamps:
-                raise FormatError("--info and --backfill-timestamps require measurement input")
+            if args.info or args.backfill_timestamps or args.start_time:
+                raise FormatError("--info, --backfill-timestamps and --start-time require measurement input")
             info = parse_info(data)
             for warning in info.warnings:
                 print(f"warning: {warning}", file=sys.stderr)
             write_info(output, info)
             print(f"Wrote INFO CSV: {output}", file=sys.stderr)
             return 0
-        measurements = parse_measurements(data, backfill_timestamps=args.backfill_timestamps)
+        measurements = parse_measurements(data, backfill_timestamps=args.backfill_timestamps,
+                                          start_time=args.start_time)
         info = None
         info_path = args.info
         if info_path is None and not args.no_info:
